@@ -160,7 +160,12 @@ final class VirtualHIDSink: ControllerOutputSink, @unchecked Sendable {
     func controllerState(slot: Int, state: ControllerState) {
         queue.async { [weak self] in
             guard let self, let device = self.devices[slot] else { return }
-            let report = Self.report(from: state)
+            let report = VirtualHIDReport.encode(
+                buttons: state.buttons,
+                leftStick: state.leftStick,
+                rightStick: state.rightStick,
+                leftTrigger: state.leftTrigger,
+                rightTrigger: state.rightTrigger)
             Task {
                 try? await device.dispatchInputReport(data: report,
                                                       timestamp: SuspendingClock.now)
@@ -168,56 +173,6 @@ final class VirtualHIDSink: ControllerOutputSink, @unchecked Sendable {
         }
     }
 
-    // MARK: Report building
-
-    private static func report(from state: ControllerState) -> Data {
-        let b = state.buttons
-        var bits: UInt32 = 0
-        func set(_ index: Int, _ on: Bool) { if on { bits |= 1 << index } }
-        set(0, b.contains(.b)); set(1, b.contains(.a))
-        set(2, b.contains(.y)); set(3, b.contains(.x))
-        set(4, b.contains(.minus)); set(5, b.contains(.home)); set(6, b.contains(.plus))
-        set(7, b.contains(.lStick)); set(8, b.contains(.rStick))
-        set(9, b.contains(.l)); set(10, b.contains(.r))
-        set(15, b.contains(.capture)); set(16, b.contains(.gr))
-        set(17, b.contains(.gl)); set(18, b.contains(.c))
-        set(19, b.contains(.zr))
-        set(20, b.contains(.zl))
-
-        func axis(_ v: Double) -> Int16 {
-            Int16(max(-32768, min(32767, v * 32767)))
-        }
-
-        var d = Data(capacity: 14)
-        d.append(UInt8(bits & 0xFF))
-        d.append(UInt8((bits >> 8) & 0xFF))
-        d.append(UInt8((bits >> 16) & 0xFF))
-        for value in [axis(state.leftStick.x), axis(-state.leftStick.y),
-                      axis(state.rightStick.x), axis(-state.rightStick.y)] {
-            withUnsafeBytes(of: value.littleEndian) { d.append(contentsOf: $0) }
-        }
-        d.append(state.leftTrigger)
-        d.append(state.rightTrigger)
-        d.append(hatValue(b))
-        return d
-    }
-
-    /// Hat: 0=N 1=NE 2=E 3=SE 4=S 5=SW 6=W 7=NW, 8=released (null state).
-    private static func hatValue(_ b: Switch2.Buttons) -> UInt8 {
-        let up = b.contains(.dpadUp), down = b.contains(.dpadDown)
-        let left = b.contains(.dpadLeft), right = b.contains(.dpadRight)
-        switch (up, right, down, left) {
-        case (true, false, false, false): return 0
-        case (true, true, false, false): return 1
-        case (false, true, false, false): return 2
-        case (false, true, true, false): return 3
-        case (false, false, true, false): return 4
-        case (false, false, true, true): return 5
-        case (false, false, false, true): return 6
-        case (true, false, false, true): return 7
-        default: return 8
-        }
-    }
 }
 
 /// The controller has no meaningful get/set report handling on the virtual
