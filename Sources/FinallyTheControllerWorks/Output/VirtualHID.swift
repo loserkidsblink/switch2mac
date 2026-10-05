@@ -6,7 +6,7 @@
 // fails and we say so once — the UDP/SDL path still works.
 //
 // Report layout (14 bytes, must match `gamepadDescriptor`):
-//   bytes 0-2: 19 buttons (bit i = button i in our fixed order) + 5 pad bits
+//   bytes 0-2: 21 buttons (bit i = button i in our fixed order) + 3 pad bits
 //   bytes 3-10: X, Y, Z, Rz as signed 16-bit LE (sticks)
 //   bytes 11-12: Rx, Ry as unsigned 8-bit (triggers)
 //   byte 13: hat switch in low nibble (0-7 clockwise from north, 8 = null)
@@ -14,6 +14,7 @@
 // Button order matches the SDL driver for consistency:
 //   0=B 1=A 2=Y 3=X 4=MINUS 5=HOME 6=PLUS 7=LSTICK 8=RSTICK 9=L 10=R
 //   11..14 unused here (d-pad goes to the hat) 15=CAPTURE 16=GR 17=GL 18=C
+//   19=ZR (the NSO GameCube pad's physical Z button) 20=ZL
 //
 // Rumble: generic HID gamepads have no standardized output-report rumble on
 // macOS, so this sink does not carry rumble; the UDP/SDL path does.
@@ -44,23 +45,23 @@ final class VirtualHIDSink: ControllerOutputSink, @unchecked Sendable {
     private static let maxAttempts = 4
     private static let retryDelay = DispatchTimeInterval.milliseconds(1500)
 
-    /// Generic gamepad: 19 buttons, two 16-bit stick pairs, two 8-bit
+    /// Generic gamepad: 21 buttons, two 16-bit stick pairs, two 8-bit
     /// triggers, one hat. Mirrors the probe descriptor that validated the
-    /// entitlement path, extended to 19 buttons.
+    /// entitlement path, extended to 21 buttons.
     private static let gamepadDescriptor = Data([
         0x05, 0x01,        // Usage Page (Generic Desktop)
         0x09, 0x05,        // Usage (Game Pad)
         0xA1, 0x01,        // Collection (Application)
         0x05, 0x09,        //   Usage Page (Button)
         0x19, 0x01,        //   Usage Minimum (1)
-        0x29, 0x13,        //   Usage Maximum (19)
+        0x29, 0x15,        //   Usage Maximum (21)
         0x15, 0x00,        //   Logical Minimum (0)
         0x25, 0x01,        //   Logical Maximum (1)
         0x75, 0x01,        //   Report Size (1)
-        0x95, 0x13,        //   Report Count (19)
+        0x95, 0x15,        //   Report Count (21)
         0x81, 0x02,        //   Input (Data,Var,Abs)
         0x75, 0x01,        //   Report Size (1) — pad to 24 bits
-        0x95, 0x05,        //   Report Count (5)
+        0x95, 0x03,        //   Report Count (3)
         0x81, 0x03,        //   Input (Const)
         0x05, 0x01,        //   Usage Page (Generic Desktop)
         0x09, 0x30,        //   Usage (X)
@@ -180,6 +181,8 @@ final class VirtualHIDSink: ControllerOutputSink, @unchecked Sendable {
         set(9, b.contains(.l)); set(10, b.contains(.r))
         set(15, b.contains(.capture)); set(16, b.contains(.gr))
         set(17, b.contains(.gl)); set(18, b.contains(.c))
+        set(19, b.contains(.zr))
+        set(20, b.contains(.zl))
 
         func axis(_ v: Double) -> Int16 {
             Int16(max(-32768, min(32767, v * 32767)))
